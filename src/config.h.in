@@ -1,0 +1,7 @@
+#pragma once
+
+/* Build-time configuration */
+
+#cmakedefine VERBOSE 1
+
+#define BLE_MAC_STR "@BLE_MAC@"
