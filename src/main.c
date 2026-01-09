@@ -1,13 +1,16 @@
 #include "ble_client.h"
 #include "http_server.h"
 
+#include "src/shared/mainloop.h"
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+/* BLE thread */
 static void* ble_thread(void* arg) {
     ble_client_start();
-    /* BlueZ mainloop runs internally */
+    mainloop_run();
     return NULL;
 }
 

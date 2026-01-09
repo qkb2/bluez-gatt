@@ -24,15 +24,12 @@
 #include "config.h"
 
 #define ATT_CID 4
+#define POLL_INTERVAL_MS 1000 * 60
 
 #define UUID_ESS_SERVICE 0x181A
 #define UUID_TEMPERATURE 0x2A6E
 #define UUID_PRESSURE 0x2A6D
 #define UUID_HUMIDITY 0x2A6F
-
-#ifndef VERBOSE
-#define VERBOSE 0
-#endif
 
 struct client {
     int fd;
@@ -40,7 +37,9 @@ struct client {
     struct gatt_db* db;
     struct bt_gatt_client* gatt;
 
-    unsigned int reliable_session_id;
+    uint16_t temp_handle;
+    uint16_t press_handle;
+    uint16_t humid_handle;
 };
 
 struct ble_sensor_state {
@@ -72,12 +71,13 @@ static int g_sec = BT_SECURITY_LOW;
 static uint16_t g_mtu = 0;
 static struct client* g_cli = NULL;
 
-/* notification */
-static void notify_cb(uint16_t value_handle,
-                      const uint8_t* value,
-                      uint16_t length,
-                      void* user_data);
-static void register_notify_cb(uint16_t att_ecode, void* user_data);
+/* polling */
+static void poll_sensors_cb(int id, void* user_data);
+static void read_cb(bool success,
+                    uint8_t att_ecode,
+                    const uint8_t* value,
+                    uint16_t length,
+                    void* user_data);
 
 /* connection */
 static void reconnect_cb(int id, void* user_data);
@@ -87,30 +87,15 @@ static void att_disconnect_cb(int err, void* user_data);
 static void log_service_event(struct gatt_db_attribute* attr, const char* str);
 static void service_added_cb(struct gatt_db_attribute* attr, void* user_data);
 static void service_removed_cb(struct gatt_db_attribute* attr, void* user_data);
-static void att_debug_cb(const char* str, void* user_data);
-static void gatt_debug_cb(const char* str, void* user_data);
-
-/* print helpers */
-static void print_uuid(const bt_uuid_t* uuid);
-static void print_incl(struct gatt_db_attribute* attr, void* user_data);
-static void print_desc(struct gatt_db_attribute* attr, void* user_data);
-static void print_chrc(struct gatt_db_attribute* attr, void* user_data);
-static void print_service(struct gatt_db_attribute* attr, void* user_data);
-static void print_services(struct client* cli);
 
 /* callbacks */
 static void ess_char_cb(struct gatt_db_attribute* attr, void* user_data);
 static void service_cb(struct gatt_db_attribute* attr, void* user_data);
 static void ready_cb(bool success, uint8_t att_ecode, void* user_data);
-static void service_changed_cb(uint16_t start_handle,
-                               uint16_t end_handle,
-                               void* user_data);
 
 /* lifecycle */
 static struct client* client_create(int fd, uint16_t mtu);
-static void client_destroy(struct client* cli);
-
-static void signal_cb(int signum, void* user_data);
+static void client_destroy(void);
 
 static int l2cap_le_att_connect(bdaddr_t* src,
                                 bdaddr_t* dst,
@@ -125,89 +110,112 @@ bool ble_get_pressure(float* out);
 bool ble_get_humidity(float* out);
 bool ble_is_connected(void);
 
-static void notify_cb(uint16_t value_handle,
-                      const uint8_t* value,
-                      uint16_t length,
-                      void* user_data) {
-    struct client* cli = user_data;
-    struct gatt_db_attribute* attr;
-    bt_uuid_t uuid;
+/* inner functions */
+static void read_cb(bool success,
+                    uint8_t att_ecode,
+                    const uint8_t* value,
+                    uint16_t length,
+                    void* user_data) {
+    uint16_t uuid16 = PTR_TO_UINT(user_data);
 
-    uint16_t handle, vh;
-    uint8_t props;
-    uint16_t ext_props;
-
-    /* Look up attribute by handle */
-    attr = gatt_db_get_attribute(cli->db, value_handle);
-    if (!attr)
+    if (!success || !value)
         return;
 
-    /* Extract characteristic UUID */
-    if (!gatt_db_attribute_get_char_data(attr, &handle, &vh, &props, &ext_props,
-                                         &uuid))
-        return;
+    pthread_mutex_lock(&g_state.lock);
 
-    bt_uuid_t temp_uuid, press_uuid, humid_uuid;
-    bt_uuid16_create(&temp_uuid, UUID_TEMPERATURE);
-    bt_uuid16_create(&press_uuid, UUID_PRESSURE);
-    bt_uuid16_create(&humid_uuid, UUID_HUMIDITY);
-
-    if (bt_uuid_cmp(&uuid, &temp_uuid) == 0) {
-        if (length < sizeof(int16_t))
-            return;
-        int16_t raw = le16toh(*(int16_t*)value);
-        printf("Temperature: %.2f °C\n", raw / 100.0);
-
-    } else if (bt_uuid_cmp(&uuid, &press_uuid) == 0) {
-        if (length < sizeof(uint32_t))
-            return;
-        uint32_t raw = le32toh(*(uint32_t*)value);
-        printf("Pressure: %.1f hPa\n", raw / 100.0);
-
-    } else if (bt_uuid_cmp(&uuid, &humid_uuid) == 0) {
-        if (length < sizeof(uint16_t))
-            return;
-        uint16_t raw = le16toh(*(uint16_t*)value);
-        printf("Humidity: %.2f %%RH\n", raw / 100.0);
+    switch (uuid16) {
+        case UUID_TEMPERATURE: {
+            int16_t raw = le16toh(*(int16_t*)value);
+            g_state.temperature = raw / 100.0f;
+            g_state.has_temp = true;
+            break;
+        }
+        case UUID_PRESSURE: {
+            uint32_t raw = le32toh(*(uint32_t*)value);
+            g_state.pressure = raw / 100.0f;
+            g_state.has_press = true;
+            break;
+        }
+        case UUID_HUMIDITY: {
+            uint16_t raw = le16toh(*(uint16_t*)value);
+            g_state.humidity = raw / 100.0f;
+            g_state.has_humid = true;
+            break;
+        }
     }
+
+    pthread_mutex_unlock(&g_state.lock);
 }
 
-static void register_notify_cb(uint16_t att_ecode, void* user_data) {
-    if (att_ecode) {
-        printf(
-            "Failed to register notify handler "
-            "- error code: 0x%02x\n",
-            att_ecode);
+static void poll_sensors_cb(int id, void* user_data) {
+    struct client* cli = g_cli;
+
+    pthread_mutex_lock(&g_state.lock);
+    bool connected = g_state.connected;
+    pthread_mutex_unlock(&g_state.lock);
+
+    if (!connected || !cli || !cli->gatt) {
+        mainloop_add_timeout(POLL_INTERVAL_MS, poll_sensors_cb, NULL, NULL);
         return;
     }
+
+    if (cli->temp_handle)
+        bt_gatt_client_read_value(cli->gatt, cli->temp_handle, read_cb,
+                                  UINT_TO_PTR(UUID_TEMPERATURE), NULL);
+
+    if (cli->press_handle)
+        bt_gatt_client_read_value(cli->gatt, cli->press_handle, read_cb,
+                                  UINT_TO_PTR(UUID_PRESSURE), NULL);
+
+    if (cli->humid_handle)
+        bt_gatt_client_read_value(cli->gatt, cli->humid_handle, read_cb,
+                                  UINT_TO_PTR(UUID_HUMIDITY), NULL);
+
+    mainloop_add_timeout(POLL_INTERVAL_MS, poll_sensors_cb, cli, NULL);
 }
 
-/* inner functions of the client */
 static void reconnect_cb(int id, void* user_data) {
     int fd;
-    struct client* cli = user_data;
 
     printf("Reconnecting...\n");
 
     fd = l2cap_le_att_connect(BDADDR_ANY, &g_dst_addr, g_dst_type, g_sec);
 
     if (fd < 0) {
-        printf("Reconnect failed, retrying in 2s\n");
-        mainloop_add_timeout(2000, reconnect_cb, cli, NULL);
+        printf("Reconnect failed (fd), retrying...\n");
+        mainloop_add_timeout(POLL_INTERVAL_MS, reconnect_cb, NULL, NULL);
         return;
     }
 
-    client_create(fd, g_mtu);
+    g_cli = client_create(fd, g_mtu);
+
+    if (!g_cli) {
+        printf("Reconnect failed (cli), retrying...\n");
+        mainloop_add_timeout(POLL_INTERVAL_MS, reconnect_cb, NULL, NULL);
+        return;
+    }
+    
+    pthread_mutex_lock(&g_state.lock);
+    g_state.connected = true;
+    g_state.has_temp = false;
+    g_state.has_press = false;
+    g_state.has_humid = false;
+    pthread_mutex_unlock(&g_state.lock);
 }
 
 static void att_disconnect_cb(int err, void* user_data) {
-    struct client* cli = user_data;
-
     printf("Disconnected (%s)\n", strerror(err));
 
-    client_destroy(cli);
+    pthread_mutex_lock(&g_state.lock);
+    g_state.connected = false;
+    g_state.has_temp = false;
+    g_state.has_press = false;
+    g_state.has_humid = false;
+    pthread_mutex_unlock(&g_state.lock);
 
-    mainloop_add_timeout(1000, reconnect_cb, NULL, NULL);
+    client_destroy();
+
+    mainloop_add_timeout(POLL_INTERVAL_MS, reconnect_cb, NULL, NULL);
 }
 
 static void log_service_event(struct gatt_db_attribute* attr, const char* str) {
@@ -231,18 +239,6 @@ static void service_added_cb(struct gatt_db_attribute* attr, void* user_data) {
 static void service_removed_cb(struct gatt_db_attribute* attr,
                                void* user_data) {
     log_service_event(attr, "Service Removed");
-}
-
-static void att_debug_cb(const char* str, void* user_data) {
-    const char* prefix = user_data;
-
-    printf("%s %s\n", prefix, str);
-}
-
-static void gatt_debug_cb(const char* str, void* user_data) {
-    const char* prefix = user_data;
-
-    printf("%s%s\n", prefix, str);
 }
 
 static void print_uuid(const bt_uuid_t* uuid) {
@@ -348,19 +344,17 @@ static void ess_char_cb(struct gatt_db_attribute* attr, void* user_data) {
                                          &uuid))
         return;
 
-    bt_uuid_t temp_uuid, press_uuid, humid_uuid;
-    bt_uuid16_create(&temp_uuid, UUID_TEMPERATURE);
-    bt_uuid16_create(&press_uuid, UUID_PRESSURE);
-    bt_uuid16_create(&humid_uuid, UUID_HUMIDITY);
+    bt_uuid_t t, p, h;
+    bt_uuid16_create(&t, UUID_TEMPERATURE);
+    bt_uuid16_create(&p, UUID_PRESSURE);
+    bt_uuid16_create(&h, UUID_HUMIDITY);
 
-    if (bt_uuid_cmp(&uuid, &temp_uuid) == 0 ||
-        bt_uuid_cmp(&uuid, &press_uuid) == 0 ||
-        bt_uuid_cmp(&uuid, &humid_uuid) == 0) {
-        printf("Registering notify for handle 0x%04x\n", value_handle);
-
-        bt_gatt_client_register_notify(
-            cli->gatt, value_handle, register_notify_cb, notify_cb, cli, NULL);
-    }
+    if (bt_uuid_cmp(&uuid, &t) == 0)
+        cli->temp_handle = value_handle;
+    else if (bt_uuid_cmp(&uuid, &p) == 0)
+        cli->press_handle = value_handle;
+    else if (bt_uuid_cmp(&uuid, &h) == 0)
+        cli->humid_handle = value_handle;
 }
 
 static void service_cb(struct gatt_db_attribute* attr, void* user_data) {
@@ -392,18 +386,6 @@ static void ready_cb(bool success, uint8_t att_ecode, void* user_data) {
     printf("GATT discovery complete\n");
 
     gatt_db_foreach_service(cli->db, NULL, service_cb, cli);
-}
-
-static void service_changed_cb(uint16_t start_handle,
-                               uint16_t end_handle,
-                               void* user_data) {
-    struct client* cli = user_data;
-
-    printf("\nService Changed handled - start: 0x%04x end: 0x%04x\n",
-           start_handle, end_handle);
-
-    gatt_db_foreach_service_in_range(cli->db, NULL, print_service, cli,
-                                     start_handle, end_handle);
 }
 
 static struct client* client_create(int fd, uint16_t mtu) {
@@ -457,14 +439,7 @@ static struct client* client_create(int fd, uint16_t mtu) {
 
     gatt_db_register(cli->db, service_added_cb, service_removed_cb, NULL, NULL);
 
-    if (VERBOSE) {
-        bt_att_set_debug(cli->att, att_debug_cb, "att: ", NULL);
-        bt_gatt_client_set_debug(cli->gatt, gatt_debug_cb, "gatt: ", NULL);
-    }
-
     bt_gatt_client_ready_register(cli->gatt, ready_cb, cli, NULL);
-    bt_gatt_client_set_service_changed(cli->gatt, service_changed_cb, cli,
-                                       NULL);
 
     /* bt_gatt_client already holds a reference */
     gatt_db_unref(cli->db);
@@ -472,21 +447,14 @@ static struct client* client_create(int fd, uint16_t mtu) {
     return cli;
 }
 
-static void client_destroy(struct client* cli) {
-    bt_gatt_client_unref(cli->gatt);
-    bt_att_unref(cli->att);
-    free(cli);
-}
+static void client_destroy(void) {
+    if (!g_cli)
+        return;
 
-static void signal_cb(int signum, void* user_data) {
-    switch (signum) {
-        case SIGINT:
-        case SIGTERM:
-            mainloop_quit();
-            break;
-        default:
-            break;
-    }
+    bt_gatt_client_unref(g_cli->gatt);
+    bt_att_unref(g_cli->att);
+    free(g_cli);
+    g_cli = NULL;
 }
 
 static int l2cap_le_att_connect(bdaddr_t* src,
@@ -497,17 +465,15 @@ static int l2cap_le_att_connect(bdaddr_t* src,
     struct sockaddr_l2 srcaddr, dstaddr;
     struct bt_security btsec;
 
-    if (VERBOSE) {
-        char srcaddr_str[18], dstaddr_str[18];
+    char srcaddr_str[18], dstaddr_str[18];
 
-        ba2str(src, srcaddr_str);
-        ba2str(dst, dstaddr_str);
+    ba2str(src, srcaddr_str);
+    ba2str(dst, dstaddr_str);
 
-        printf(
-            "btgatt-client: Opening L2CAP LE connection on ATT "
-            "channel:\n\t src: %s\n\tdest: %s\n",
-            srcaddr_str, dstaddr_str);
-    }
+    printf(
+        "btgatt-client: Opening L2CAP LE connection on ATT "
+        "channel:\n\t src: %s\n\tdest: %s\n",
+        srcaddr_str, dstaddr_str);
 
     sock = socket(PF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
     if (sock < 0) {
@@ -572,20 +538,22 @@ bool ble_client_start(void) {
                                   BT_SECURITY_LOW);
 
     if (fd < 0) {
-        mainloop_add_timeout(2000, reconnect_cb, NULL, NULL);
+        mainloop_add_timeout(POLL_INTERVAL_MS, reconnect_cb, NULL, NULL);
         return false;
     }
 
-    struct client* cli = client_create(fd, 0);
-    if (!cli) {
+    g_cli = client_create(fd, 0);
+    if (!g_cli) {
         close(fd);
-        mainloop_add_timeout(2000, reconnect_cb, NULL, NULL);
+        mainloop_add_timeout(POLL_INTERVAL_MS, reconnect_cb, NULL, NULL);
         return false;
     }
 
     pthread_mutex_lock(&g_state.lock);
     g_state.connected = true;
     pthread_mutex_unlock(&g_state.lock);
+
+    mainloop_add_timeout(POLL_INTERVAL_MS, poll_sensors_cb, NULL, NULL);
 
     return true;
 }

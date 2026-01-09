@@ -1,0 +1,8 @@
+set(CMAKE_SYSTEM_NAME Linux)
+
+set(CMAKE_C_COMPILER musl-gcc)
+
+# Optional but common
+set(CMAKE_EXE_LINKER_FLAGS "-static")
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+set(CMAKE_FIND_LIBRARY_PREFER_STATIC TRUE)

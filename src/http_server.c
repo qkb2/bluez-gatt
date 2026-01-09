@@ -23,13 +23,18 @@ static void send_response(int client_fd) {
 
     snprintf(body, sizeof(body),
              "<!DOCTYPE html>"
-             "<html><head><title>Sensor Values</title></head>"
-             "<body>"
-             "<h1>Sensor Values</h1>"
-             "<p>Temperature: %s</p>"
-             "<p>Pressure: %s</p>"
-             "<p>Humidity: %s</p>"
-             "</body></html>",
+             "<html>"
+                "<head>"
+                    "<title>Sensor Values</title>"
+                    "<meta http-equiv=\"refresh\" content=\"5\">"
+                "</head>"
+                "<body>"
+                    "<h1>Sensor Values</h1>"
+                    "<p>Temperature: %s</p>"
+                    "<p>Pressure: %s</p>"
+                    "<p>Humidity: %s</p>"
+                "</body>"
+             "</html>",
              has_t ? ({
                  static char b[32];
                  snprintf(b, 32, "%.2f °C", t);
