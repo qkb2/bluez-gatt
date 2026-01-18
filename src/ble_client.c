@@ -24,7 +24,7 @@
 #include "config.h"
 
 #define ATT_CID 4
-#define POLL_INTERVAL_MS 1000 * 60
+#define POLL_INTERVAL_MS 2000
 
 #define UUID_ESS_SERVICE 0x181A
 #define UUID_TEMPERATURE 0x2A6E
@@ -66,7 +66,7 @@ static struct ble_sensor_state g_state = {.connected = false,
                                           .lock = PTHREAD_MUTEX_INITIALIZER};
 
 static bdaddr_t g_dst_addr;
-static uint8_t g_dst_type = BDADDR_LE_RANDOM;
+static uint8_t g_dst_type = BDADDR_LE_PUBLIC;
 static int g_sec = BT_SECURITY_LOW;
 static uint16_t g_mtu = 0;
 static struct client* g_cli = NULL;
@@ -194,7 +194,7 @@ static void reconnect_cb(int id, void* user_data) {
         mainloop_add_timeout(POLL_INTERVAL_MS, reconnect_cb, NULL, NULL);
         return;
     }
-    
+
     pthread_mutex_lock(&g_state.lock);
     g_state.connected = true;
     g_state.has_temp = false;

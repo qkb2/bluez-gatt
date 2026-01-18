@@ -37,13 +37,13 @@ static void send_response(int client_fd) {
              "</html>",
              has_t ? ({
                  static char b[32];
-                 snprintf(b, 32, "%.2f °C", t);
+                 snprintf(b, 32, "%.2f &deg;C", t);
                  b;
              })
                    : "N/A",
              has_p ? ({
                  static char b[32];
-                 snprintf(b, 32, "%.1f hPa", p);
+                 snprintf(b, 32, "%.1f hPa", p / 10.0f);
                  b;
              })
                    : "N/A",
