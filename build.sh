@@ -27,4 +27,4 @@ cmake .. \
 
 cmake --build . -- -j$(nproc)
 
-echo "Build finished. Executable is at $BUILD_DIR/ble_http_server"
+echo "Build finished. Executable is at $BUILD_DIR/iot_ble_server"

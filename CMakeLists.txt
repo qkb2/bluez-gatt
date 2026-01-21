@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ble_http_server)
+project(iot_ble_server)
 
 # config options
 option(VERBOSE "Enable verbose logging" OFF)
@@ -39,26 +39,26 @@ add_subdirectory(libshared)
 file(GLOB_RECURSE SRC_FILES src/*.c)
 
 # Target
-add_executable(ble_http_server ${SRC_FILES})
+add_executable(iot_ble_server ${SRC_FILES})
 
-target_include_directories(ble_http_server PRIVATE
+target_include_directories(iot_ble_server PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}/src
 )
 
 # Link libraries
-target_link_libraries(ble_http_server
+target_link_libraries(iot_ble_server
     pthread
     bluetooth
     shared
 )
 
 # Respect Buildroot sysroot
-set_target_properties(ble_http_server PROPERTIES
+set_target_properties(iot_ble_server PROPERTIES
     INSTALL_RPATH_USE_LINK_PATH TRUE
 )
 
 # Optional install target
-install(TARGETS ble_http_server
+install(TARGETS iot_ble_server
     RUNTIME DESTINATION bin
 )
