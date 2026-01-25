@@ -19,9 +19,9 @@
 
 #include <stdlib.h>
 
-#include "mainloop.h"
-#include "util.h"
-#include "timeout.h"
+#include "shared/mainloop.h"
+#include "shared/util.h"
+#include "shared/timeout.h"
 
 struct timeout_data {
 	int id;

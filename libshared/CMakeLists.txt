@@ -10,4 +10,5 @@ add_library(shared
     queue.c
     timeout-mainloop.c
     util.c
+    uuid.c
 )

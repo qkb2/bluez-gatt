@@ -28,14 +28,14 @@
 #include <sys/uio.h>
 #include <errno.h>
 
-#include "src/shared/att.h"
-#include "lib/bluetooth.h"
-#include "lib/uuid.h"
-#include "src/shared/queue.h"
-#include "src/shared/gatt-db.h"
-#include "src/shared/gatt-server.h"
-#include "src/shared/gatt-helpers.h"
-#include "src/shared/util.h"
+#include "shared/att.h"
+#include "bluetooth/bluetooth.h"
+#include "shared/uuid.h"
+#include "shared/queue.h"
+#include "shared/gatt-db.h"
+#include "shared/gatt-server.h"
+#include "shared/gatt-helpers.h"
+#include "shared/util.h"
 
 #ifndef MAX
 #define MAX(a, b) ((a) > (b) ? (a) : (b))

@@ -28,13 +28,13 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#include "lib/bluetooth.h"
-#include "lib/uuid.h"
-#include "src/shared/util.h"
-#include "src/shared/queue.h"
-#include "src/shared/timeout.h"
-#include "src/shared/att.h"
-#include "src/shared/gatt-db.h"
+#include "bluetooth/bluetooth.h"
+#include "shared/uuid.h"
+#include "shared/util.h"
+#include "shared/queue.h"
+#include "shared/timeout.h"
+#include "shared/att.h"
+#include "shared/gatt-db.h"
 
 #ifndef MAX
 #define MAX(a, b) ((a) > (b) ? (a) : (b))

@@ -29,9 +29,9 @@
 #include <errno.h>
 #include <sys/socket.h>
 
-#include "src/shared/mainloop.h"
-#include "src/shared/util.h"
-#include "src/shared/io.h"
+#include "shared/mainloop.h"
+#include "shared/util.h"
+#include "shared/io.h"
 
 struct io {
 	int ref_count;

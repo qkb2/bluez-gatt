@@ -1,7 +1,7 @@
 #include "ble_client.h"
 #include "http_server.h"
 
-#include "src/shared/mainloop.h"
+#include "shared/mainloop.h"
 
 #include <pthread.h>
 #include <stdio.h>

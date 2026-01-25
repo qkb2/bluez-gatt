@@ -26,12 +26,12 @@
 #include <config.h>
 #endif
 
-#include "src/shared/queue.h"
-#include "src/shared/att.h"
-#include "lib/bluetooth.h"
-#include "lib/uuid.h"
-#include "src/shared/gatt-helpers.h"
-#include "src/shared/util.h"
+#include "shared/queue.h"
+#include "shared/att.h"
+#include "bluetooth/bluetooth.h"
+#include "shared/uuid.h"
+#include "shared/gatt-helpers.h"
+#include "shared/util.h"
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

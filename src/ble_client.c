@@ -8,18 +8,21 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "lib/bluetooth.h"
-#include "lib/hci.h"
-#include "lib/hci_lib.h"
-#include "lib/l2cap.h"
-#include "lib/uuid.h"
+/* Standard BlueZ headers */
+#include <bluetooth/bluetooth.h>
+#include <bluetooth/hci.h>
+#include <bluetooth/hci_lib.h>
+#include <bluetooth/l2cap.h>
+#include <bluetooth/sdp.h>
+#include <bluetooth/sdp_lib.h>
 
-#include "src/shared/util.h"
-#include "src/shared/queue.h"
-#include "src/shared/att.h"
-#include "src/shared/gatt-db.h"
-#include "src/shared/gatt-client.h"
-#include "src/shared/mainloop.h"
+#include "shared/uuid.h"
+#include "shared/util.h"
+#include "shared/queue.h"
+#include "shared/att.h"
+#include "shared/gatt-db.h"
+#include "shared/gatt-client.h"
+#include "shared/mainloop.h"
 
 #include "config.h"
 

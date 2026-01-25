@@ -12,8 +12,8 @@ endif()
 
 # Configure header
 configure_file(
-    src/config.h.in
-    src/config.h
+    includes/config.h.in
+    includes/config.h
 )
 
 # C standard
@@ -28,11 +28,10 @@ add_compile_definitions(
 
 # Includes
 include_directories(includes)
-include_directories(includes/src/shared)
-include_directories(includes/lib)
+include_directories(includes/shared)
 
 # Subdirectories
-add_subdirectory(libbluetooth)
+# add_subdirectory(libbluetooth)
 add_subdirectory(libshared)
 
 # Source files
@@ -42,8 +41,9 @@ file(GLOB_RECURSE SRC_FILES src/*.c)
 add_executable(iot_ble_server ${SRC_FILES})
 
 target_include_directories(iot_ble_server PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_BINARY_DIR}/src
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_BINARY_DIR}/includes
+    /usr/include/bluetooth
 )
 
 # Link libraries
